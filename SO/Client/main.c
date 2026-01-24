@@ -9,7 +9,11 @@ int main() {
   struct data_t *data = mmap(NULL, sizeof(struct data_t),
                              PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
-  sem_wait(&data->sem);
+  if(sem_trywait(&data->sem) == -1) {
+    perror("Server zajety.");
+    exit(1);
+  }
+  
   data->op = ADD;
   data->a = 5;
   data->b = 3;
@@ -17,7 +21,7 @@ int main() {
 
   sem_post(&data->sem);
   while (data->state != 2) {
-    sleep(1);
+    sleep(10);
   }
 
   printf("Wynik: %f\n", data->result);
