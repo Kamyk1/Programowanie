@@ -27,6 +27,7 @@ struct data_t {
   enum operator_t op;
   float result;
   int state;
+  sem_t sem;
 };
 
 #endif // SERVER_2026_01_14_COMMON_H
