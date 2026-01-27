@@ -2,27 +2,34 @@
 #include <semaphore.h>
 #include <stdio.h>
 
-int main() {
+int main()
+{
   int fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
-  if (fd == -1) {
+  if (fd == -1)
+  {
     perror("shm_open");
-    exit(1);
+    return 1;
   }
 
   ftruncate(fd, sizeof(struct data_t));
 
-  struct data_t *data = mmap(NULL, sizeof(struct data_t),
-                             PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  struct data_t *data = mmap(NULL, sizeof(struct data_t), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
-  sem_init(&data->sem, 1, 1);
+  sem_init(&data->server_sem, 1, 1);
+  sem_init(&data->request_sem, 1, 0);
+  sem_init(&data->response_sem, 1, 0);
+
   data->state = 0;
 
   printf("Serwer uruchomiony...\n");
 
-  while (1) {
-    sem_wait(&data->sem);
-    if (data->state == 1) {
-      switch (data->op) {
+  while (1)
+  {
+    sem_wait(&data->request_sem);
+    if (data->state == 1)
+    {
+      switch (data->op)
+      {
       case ADD:
         data->result = data->a + data->b;
         break;
@@ -40,7 +47,7 @@ int main() {
       }
       data->state = 2;
     }
-    sem_post(&data->sem);
+    sem_post(&data->response_sem);
     sleep(1);
   }
   munmap(data, sizeof(struct data_t));
