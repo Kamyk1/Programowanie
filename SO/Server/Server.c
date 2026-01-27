@@ -17,16 +17,18 @@ int main()
     perror("mmap");
     exit(1);
   }
-  memset(data, 0, sizeof(struct data_t));
+  data->stat_min = 0;
+  data->stat_max = 0;
+  data->server_running = 1;
 
-  sem_init(&data->sem_server, 1, 1);
+  sem_init(&data->sem_server, 1, 4);
   sem_init(&data->sem_request, 1, 0);
   sem_init(&data->sem_respond, 1, 0);
 
   pthread_t th;
-  data->server_running = 1;
   pthread_create(&th, NULL, command_thread, data);
-
+  pthread_t th2;
+  pthread_create(&th2, NULL, stats_timer_thread, data);
   while (data->server_running)
   {
     if (sem_trywait(&data->sem_request) == 0)
@@ -37,11 +39,11 @@ int main()
         pthread_detach(client_th);
       }
     }
-    sleep(10);
+    usleep(10000);
   }
 
   pthread_join(th, NULL);
-
+  pthread_join(th2, NULL);
   munmap(data, sizeof(struct data_t));
   close(fd);
   shm_unlink(SHM_NAME);

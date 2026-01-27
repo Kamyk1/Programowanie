@@ -1,7 +1,8 @@
 //
 // Created by root on 1/14/26.
 //
-
+#include <sys/mman.h>
+#include <unistd.h>
 #include <fcntl.h>
 #include <pthread.h>
 #include <semaphore.h>
@@ -9,9 +10,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
 #include <time.h>
-#include <unistd.h>
 #include <stdio.h>
 #include <ctype.h>
 
@@ -78,6 +77,21 @@ void *handle_client(void *arg)
   else
     data->stat_min++;
   sem_post(&data->sem_respond);
+  return NULL;
+}
+
+void *stats_timer_thread(void *arg)
+{
+  struct data_t *data = (struct data_t *)arg;
+  while (data->server_running)
+  {
+    sleep(10);
+    if (!data->server_running) break;
+    printf("\n[AUTO-STAT] Total MIN: %d, Total MAX: %d\n", 
+           data->stat_min, data->stat_max);
+    printf("Enter command (quit/stat/reset): "); 
+    fflush(stdout); 
+  }
   return NULL;
 }
 
@@ -160,6 +174,7 @@ int32_t read_keyboard(FILE *fp, struct data_t *data)
     }
     height++;
   }
+  
   rewind(fp);
   for (size_t i = 0; i < (size_t)height; i++)
   {

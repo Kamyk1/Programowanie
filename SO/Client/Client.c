@@ -24,10 +24,21 @@ int main(int argc, char *argv[])
         perror("mmap");
         exit(1);
     }
-    if (sem_trywait(&data->sem_server) == -1)
+    int counter = 0;
+    while (1)
     {
-        printf("Server is running\n");
-        exit(1);
+        if (sem_trywait(&data->sem_server) == 0)
+        {
+            break;
+        }
+        if (counter > 0)
+        {
+            printf("REQUEST TIMEOUT (5s)\n");
+            exit(1);
+        }
+        printf("Server is running PLEASE WAIT\n");
+        counter++;
+        sleep(5);
     }
     if (strcmp(task, "min") == 0)
     {
@@ -59,7 +70,7 @@ int main(int argc, char *argv[])
     }
     sem_post(&data->sem_request);
     sem_wait(&data->sem_respond);
-    
+
     printf("Result: %d\n", data->result);
 
     sem_post(&data->sem_server);
