@@ -27,8 +27,9 @@ int32_t get_min(int32_t *tab, size_t size)
 void *operate_client(void *arg)
 {
   struct control_t *control = (struct control_t *)arg;
-  while (control->server_status == 1)
+  while (1)
   {
+    sem_wait(&control->sem_request);
     pthread_mutex_lock(&control->mutex);
     if (control->server_status == 0)
     {
@@ -36,12 +37,13 @@ void *operate_client(void *arg)
       break;
     }
     pthread_mutex_unlock(&control->mutex);
-    sem_wait(&control->sem_request);
+    pthread_mutex_lock(&control->mutex);
     int32_t *shared_tab = mmap(NULL, sizeof(int32_t) * control->count, PROT_WRITE | PROT_READ, MAP_SHARED, data_fd, 0);
     if (shared_tab == MAP_FAILED)
     {
       break;
     }
+    pthread_mutex_unlock(&control->mutex);
     pthread_mutex_lock(&control->mutex);
     control->result = (control->op == MIN) ? get_min(shared_tab, control->count) : get_max(shared_tab, control->count);
 
@@ -116,6 +118,7 @@ int main()
     error_handler(1);
   }
   printf("Server is running...\n");
+  memset(control, 0, sizeof(struct control_t));
   control->result = 0;
   control->count_max = 0;
   control->count_min = 0;
