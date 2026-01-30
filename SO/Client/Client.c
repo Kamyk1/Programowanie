@@ -1,45 +1,46 @@
 #include "../Server/common.h"
+#include <fcntl.h>
+#include <stdio.h>
+#include <sys/mman.h>
 
-int32_t *read_file(const char *file_name, size_t *size) {
+int32_t *read_file(const char *file_name, size_t *count) {
   FILE *fp = fopen(file_name, "rt");
   if (!fp) {
-    printf("ERROR: LOADING FILE");
+    printf("ERROR: LOADING FILE\n");
     return NULL;
   }
-  size_t count = 0;
+  int temp_size = 0;
   int val;
   while (fscanf(fp, "%d", &val) == 1) {
-    count++;
+    temp_size++;
   }
-  if (count == 0) {
+  int32_t *result = calloc(temp_size, sizeof(int32_t));
+  if (!result) {
     fclose(fp);
-    printf("ERROR: FILE EMPTY");
-    return NULL;
-  }
-  int32_t *input = calloc(count, sizeof(int32_t));
-  if (!input) {
-    printf("ERROR: FAILED TO ALLOCATE MEMORY");
-    fclose(fp);
+    printf("ERROR: FAILED TO ALLOCATE MEMORY\n");
     return NULL;
   }
   rewind(fp);
-  count = 0;
+  temp_size = 0;
   while (fscanf(fp, "%d", &val) == 1) {
-    input[count] = val;
-    count++;
+    result[temp_size] = val;
+    temp_size++;
   }
-  *size = count;
+  *count = temp_size;
   fclose(fp);
-  return input;
+  return result;
 }
-
 int main(int argc, char *argv[]) {
   if (argc < 3) {
-    printf("ERROR: NOT ENOUGH ARGUMENTS\n");
+    printf("ERROR: NOT ENOUGH ARGUEMNTS\n");
     return 1;
   }
   const char *file_name = argv[1];
   const char *task = argv[2];
+  if (strcmp(task, "min") != 0 && strcmp(task, "max") != 0) {
+    printf("ERROR: WRONG TASK\n");
+    return 2;
+  }
   size_t count = 0;
   int32_t *input = read_file(file_name, &count);
   if (!input) {
@@ -54,23 +55,28 @@ int main(int argc, char *argv[]) {
       mmap(NULL, sizeof(struct control_t), PROT_READ | PROT_WRITE, MAP_SHARED,
            fd_control, 0);
   if (control == MAP_FAILED) {
+    close(fd_control);
     free(input);
     error_handler(3);
   }
-
-  printf("Server PID z SHM: %d\n", control->server_pid);
-
-  if (kill(control->server_pid, 0) == -1)
-    exit(1);
-
+  printf("Server PID: %d\n", control->server_id);
+  if (kill(control->server_id, 0) == -1) {
+    close(fd_control);
+    free(input);
+    munmap(control, sizeof(struct control_t));
+    error_handler(4);
+  }
   int fd_data = shm_open(SHM_DATA, O_RDWR, 0666);
   if (fd_data == -1) {
+    close(fd_control);
     free(input);
     munmap(control, sizeof(struct control_t));
     error_handler(1);
   }
   if (ftruncate(fd_data, count * sizeof(int32_t)) == -1) {
     free(input);
+    close(fd_control);
+    close(fd_data);
     munmap(control, sizeof(struct control_t));
     error_handler(2);
   }
@@ -78,19 +84,23 @@ int main(int argc, char *argv[]) {
                        MAP_SHARED, fd_data, 0);
   if (data == MAP_FAILED) {
     free(input);
+    close(fd_control);
+    close(fd_data);
     munmap(control, sizeof(struct control_t));
     error_handler(3);
   }
+  memcpy(data, input, count * sizeof(int32_t));
+  free(input);
+
   if (sem_wait(&control->sem_server) == -1) {
-    free(input);
+    close(fd_control);
+    close(fd_data);
     munmap(control, sizeof(struct control_t));
     munmap(data, count * sizeof(int32_t));
-    error_handler(4);
+    error_handler(6);
   }
+  control->size = count;
   control->op = (strcmp(task, "min") == 0) ? MIN : MAX;
-  control->count = count;
-  memcpy(data, input, count * sizeof(int32_t));
-
   sem_post(&control->sem_request);
   sem_wait(&control->sem_respond);
 
@@ -98,10 +108,9 @@ int main(int argc, char *argv[]) {
 
   sem_post(&control->sem_server);
 
-  munmap(control, sizeof(struct control_t));
-  munmap(data, count * sizeof(int32_t));
   close(fd_control);
   close(fd_data);
-  free(input);
+  munmap(control, sizeof(struct control_t));
+  munmap(data, count * sizeof(int32_t));
   return 0;
 }
